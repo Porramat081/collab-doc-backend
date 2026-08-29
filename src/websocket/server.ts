@@ -1,7 +1,8 @@
-import { Server as HTTPServer } from "http";
+import { Server as HTTPServer, IncomingMessage } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { URL } from "url";
 import { documentService } from "../services";
+import { decodeKey } from "../utils/jwt";
 
 interface ExtendedWebSocket extends WebSocket {
   documentId?: string;
@@ -11,14 +12,12 @@ interface ExtendedWebSocket extends WebSocket {
 
 export class CollaborativeWebSocketServer {
   private wss: WebSocketServer;
-  // Map of documentId -> Set of active client sockets
   private rooms: Map<string, Set<ExtendedWebSocket>> = new Map();
 
   constructor(server: HTTPServer) {
     this.wss = new WebSocketServer({ noServer: true });
 
-    // Handle upgrade requests from the shared HTTP server
-    server.on("upgrade", (request, socket, head) => {
+    server.on("upgrade", (request: IncomingMessage, socket, head) => {
       const { pathname, searchParams } = new URL(
         request.url || "",
         `http://${request.headers.host}`,
@@ -26,29 +25,54 @@ export class CollaborativeWebSocketServer {
 
       if (pathname === "/ws/documents") {
         const documentId = searchParams.get("documentId");
-        const userId =
-          (request.headers["x-user-id"] as string) ||
-          searchParams.get("userId");
 
-        if (!documentId || !userId) {
-          socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+        const token = this.extractTokenFromSubprotocol(request);
+
+        if (!token || !documentId) {
+          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
           socket.destroy();
           return;
         }
 
-        this.wss.handleUpgrade(request, socket, head, (ws) => {
-          const client = ws as ExtendedWebSocket;
-          client.documentId = documentId;
-          client.userId = userId;
-          client.isAlive = true;
-          this.wss.emit("connection", client);
-        });
+        try {
+          const decoded = decodeKey(token);
+          this.wss.handleUpgrade(request, socket, head, (ws) => {
+            const client = ws as ExtendedWebSocket;
+            client.documentId = documentId;
+            client.userId = decoded.userId;
+            client.isAlive = true;
+            this.wss.emit("connection", client);
+          });
+        } catch (err) {
+          console.error(
+            "WebSocket Authentication Failed:",
+            (err as Error).message,
+          );
+          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+          socket.destroy();
+          return;
+        }
       } else {
         socket.destroy();
       }
     });
 
     this.init();
+  }
+
+  private extractTokenFromSubprotocol(request: IncomingMessage): string | null {
+    const subprotocolHeader = request.headers["sec-websocket-protocol"];
+    if (!subprotocolHeader) return null;
+
+    // Subprotocol format sent by client: "access_token, <JWT_TOKEN>"
+    const protocols = subprotocolHeader.split(",").map((p) => p.trim());
+    const tokenIndex = protocols.indexOf("access_token");
+
+    if (tokenIndex !== -1 && protocols[tokenIndex + 1]) {
+      return protocols[tokenIndex + 1];
+    }
+
+    return null;
   }
 
   private init(): void {
@@ -78,8 +102,6 @@ export class CollaborativeWebSocketServer {
       }
       this.rooms.get(documentId)!.add(ws);
 
-      console.log(`User ${userId} connected to document room ${documentId}`);
-
       // Handle incoming messages (Binary CRDT Updates)
       ws.on(
         "message",
@@ -88,7 +110,6 @@ export class CollaborativeWebSocketServer {
 
           try {
             const updateBlob = new Uint8Array(data as Buffer);
-
             // 1. Persist the CRDT update in MongoDB via Service Layer
             await documentService.applyCRDTUpdate(
               documentId,
@@ -117,7 +138,6 @@ export class CollaborativeWebSocketServer {
             this.rooms.delete(documentId);
           }
         }
-        console.log(`User ${userId} left document room ${documentId}`);
       });
     });
   }
