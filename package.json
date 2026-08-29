@@ -1,0 +1,33 @@
+{
+  "name": "collab-doc",
+  "type": "module",
+  "scripts": {
+    "start": "node --watch src/app.ts",
+    "dev": "node --watch src/app.ts",
+    "migration:create": "migrate-mongo create",
+    "migration:compile": "tsc --project tsconfig.json",
+    "migration:up": "npm run migration:compile && migrate-mongo up",
+    "migration:down": "npm run migration:compile && migrate-mongo down",
+    "migration:status": "migrate-mongo status"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "migrate-mongo": "^14.0.7",
+    "mongodb": "^7.6.0",
+    "mongoose": "^9.9.4"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/migrate-mongo": "^10.0.6",
+    "@types/node": "^26.4.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^7.0.2"
+  },
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
