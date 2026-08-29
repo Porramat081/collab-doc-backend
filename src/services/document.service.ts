@@ -1,7 +1,4 @@
-import type {
-  IDocumentRepository,
-  IUserRepository,
-} from "../repositories/index.ts";
+import type { IDocumentRepository, IUserRepository } from "../repositories";
 import type {
   IDocumentService,
   CreateDocumentInput,

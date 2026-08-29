@@ -1,7 +1,8 @@
-import mongoose from "mongoose";
+import mongoose, { Mongoose } from "mongoose";
 import "dotenv/config";
+import { PrismaClient } from "@prisma/client";
 
-export async function connectDB(): Promise<void> {
+export async function connectDB(): Promise<Mongoose> {
   const url = process.env.MONGO_URI;
   const dbName = process.env.MONGO_DB_NAME;
 
@@ -13,11 +14,15 @@ export async function connectDB(): Promise<void> {
     console.error("MongoDB connection error:", err);
   });
 
-  await mongoose.connect(url, { dbName });
-
   console.log(`Connected to MongoDB database "${mongoose.connection.name}"`);
+
+  return await mongoose.connect(url, { dbName });
 }
 
 export async function disconnectDB(): Promise<void> {
   await mongoose.disconnect();
 }
+
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+export const prisma = globalForPrisma.prisma || new PrismaClient();
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

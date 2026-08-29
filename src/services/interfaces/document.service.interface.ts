@@ -1,7 +1,7 @@
 import type {
   DocumentMetadataEntity,
   DocumentContentEntity,
-} from "../../repositories/index.ts";
+} from "../../repositories";
 
 export interface CreateDocumentInput {
   title: string;

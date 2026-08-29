@@ -1,4 +1,4 @@
-import type { UserEntity } from "../../repositories/index.ts";
+import type { UserEntity } from "../../repositories";
 
 export interface IUserService {
   getUserProfile(userId: string): Promise<UserEntity>;
