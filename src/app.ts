@@ -1,28 +1,18 @@
-import express, { type Express, type Request, type Response } from "express";
-import "dotenv/config";
-import { connectDB, disconnectDB } from "./db/connection.ts";
-import "./models/index.ts";
+import express from "express";
+import userRoutes from "./routes/user.route";
+import documentRoutes from "./routes/document.route";
+import { errorHandler } from "./middleware/error.middleware";
 
-const app: Express = express();
-const port = process.env.PORT || 3000;
+const app = express();
 
-app.get("/", (req: Request, res: Response) => {
-  res.send("Hello World!");
-});
+// Parsers
+app.use(express.json());
 
-async function start() {
-  await connectDB();
-  app.listen(port, () => console.log("server's running on port : ", port));
-}
+// Routes
+app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/documents", documentRoutes);
 
-start().catch((err) => {
-  console.error("Failed to start server:", err);
-  process.exit(1);
-});
+// Global Error Handler (must be registered last)
+app.use(errorHandler);
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, async () => {
-    await disconnectDB();
-    process.exit(0);
-  });
-}
+export default app;
