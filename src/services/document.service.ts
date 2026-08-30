@@ -24,3 +24,5 @@ export class DocumentService implements IDocumentService {
     await documentRepository.saveCRDTUpdate(documentId, userId, update);
   }
 }
+
+export const documentService = new DocumentService();
