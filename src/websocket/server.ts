@@ -1,8 +1,20 @@
 import { Server as HTTPServer, IncomingMessage } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { URL } from "url";
-import { documentService } from "../services";
+import * as Y from "yjs";
+import * as awarenessProtocol from "y-protocols/awareness";
+import { documentService } from "../services/document.service";
 import { decodeKey } from "../utils/jwt";
+import { redisWSAdapter } from "./redis-adapter";
+import { snapshotWorker } from "../workers/snapshot.worker";
+import {
+  MessageType,
+  decodeMessage,
+  encodeSyncStep1,
+  encodeSyncStep2,
+  encodeUpdate,
+  encodeAwareness,
+} from "./protocol";
 
 interface ExtendedWebSocket extends WebSocket {
   documentId?: string;
@@ -10,12 +22,21 @@ interface ExtendedWebSocket extends WebSocket {
   isAlive?: boolean;
 }
 
+interface RoomState {
+  doc: Y.Doc;
+  awareness: awarenessProtocol.Awareness;
+  clients: Set<ExtendedWebSocket>;
+}
+
 export class CollaborativeWebSocketServer {
   private wss: WebSocketServer;
-  private rooms: Map<string, Set<ExtendedWebSocket>> = new Map();
+  private rooms: Map<string, RoomState> = new Map();
 
   constructor(server: HTTPServer) {
-    this.wss = new WebSocketServer({ noServer: true });
+    this.wss = new WebSocketServer({
+      noServer: true,
+      handleProtocols: () => "access_token",
+    });
 
     server.on("upgrade", (request: IncomingMessage, socket, head) => {
       const { pathname, searchParams } = new URL(
@@ -25,7 +46,6 @@ export class CollaborativeWebSocketServer {
 
       if (pathname === "/ws/documents") {
         const documentId = searchParams.get("documentId");
-
         const token = this.extractTokenFromSubprotocol(request);
 
         if (!token || !documentId) {
@@ -41,16 +61,12 @@ export class CollaborativeWebSocketServer {
             client.documentId = documentId;
             client.userId = decoded.userId;
             client.isAlive = true;
+            // client.protocol = "access_token";
             this.wss.emit("connection", client);
           });
-        } catch (err) {
-          console.error(
-            "WebSocket Authentication Failed:",
-            (err as Error).message,
-          );
+        } catch {
           socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
           socket.destroy();
-          return;
         }
       } else {
         socket.destroy();
@@ -63,94 +79,144 @@ export class CollaborativeWebSocketServer {
   private extractTokenFromSubprotocol(request: IncomingMessage): string | null {
     const subprotocolHeader = request.headers["sec-websocket-protocol"];
     if (!subprotocolHeader) return null;
-
-    // Subprotocol format sent by client: "access_token, <JWT_TOKEN>"
     const protocols = subprotocolHeader.split(",").map((p) => p.trim());
     const tokenIndex = protocols.indexOf("access_token");
-
-    if (tokenIndex !== -1 && protocols[tokenIndex + 1]) {
-      return protocols[tokenIndex + 1];
-    }
-
-    return null;
+    return tokenIndex !== -1 && protocols[tokenIndex + 1]
+      ? protocols[tokenIndex + 1]
+      : null;
   }
 
   private init(): void {
-    // Heartbeat mechanism to clean up dead connections
-    const interval = setInterval(() => {
-      this.wss.clients.forEach((ws) => {
-        const client = ws as ExtendedWebSocket;
-        if (client.isAlive === false) return client.terminate();
-        client.isAlive = false;
-        client.ping();
-      });
-    }, 30000);
+    redisWSAdapter.onRemoteMessage((documentId, type, payload) => {
+      const room = this.rooms.get(documentId);
+      if (!room) return;
 
-    this.wss.on("close", () => clearInterval(interval));
-
-    this.wss.on("connection", (ws: ExtendedWebSocket) => {
-      ws.on("pong", () => {
-        ws.isAlive = true;
-      });
-
-      const { documentId, userId } = ws;
-      if (!documentId || !userId) return ws.close(1008, "Missing parameters");
-
-      // Join document room
-      if (!this.rooms.has(documentId)) {
-        this.rooms.set(documentId, new Set());
+      if (type === "CRDT_UPDATE") {
+        Y.applyUpdate(room.doc, payload, "redis-remote");
+        this.broadcastToRoom(documentId, null, encodeUpdate(payload));
+      } else if (type === "AWARENESS_UPDATE") {
+        awarenessProtocol.applyAwarenessUpdate(
+          room.awareness,
+          payload,
+          "redis-remote",
+        );
+        this.broadcastToRoom(documentId, null, encodeAwareness(payload));
       }
-      this.rooms.get(documentId)!.add(ws);
+    });
 
-      // Handle incoming messages (Binary CRDT Updates)
-      ws.on(
-        "message",
-        async (data: Buffer | ArrayBuffer | Buffer[], isBinary: boolean) => {
-          if (!isBinary) return; // Only process binary CRDT payloads
+    this.wss.on("connection", async (ws: ExtendedWebSocket) => {
+      const { documentId, userId } = ws;
+      if (!documentId || !userId) return ws.close(1008, "Missing params");
 
-          try {
-            const updateBlob = new Uint8Array(data as Buffer);
-            // 1. Persist the CRDT update in MongoDB via Service Layer
-            await documentService.applyCRDTUpdate(
-              documentId,
-              userId,
-              updateBlob,
-            );
+      const room = await this.getOrCreateRoom(documentId);
+      room.clients.add(ws);
+      await redisWSAdapter.subscribeToRoom(documentId);
 
-            // 2. Broadcast update to all other connected clients in the room
-            this.broadcastToRoom(documentId, ws, updateBlob);
-          } catch (error) {
-            console.error(
-              `Failed to process CRDT update for document ${documentId}:`,
-              error,
-            );
-            ws.send(JSON.stringify({ error: "Failed to process update" }));
-          }
-        },
+      const serverStateVector = Y.encodeStateVector(room.doc);
+      ws.send(encodeSyncStep1(serverStateVector), { binary: true });
+
+      const currentAwareness = awarenessProtocol.encodeAwarenessUpdate(
+        room.awareness,
+        Array.from(room.awareness.getStates().keys()),
       );
+      if (currentAwareness.length > 0) {
+        ws.send(encodeAwareness(currentAwareness), { binary: true });
+      }
 
-      // Handle client disconnect
-      ws.on("close", () => {
-        const room = this.rooms.get(documentId);
-        if (room) {
-          room.delete(ws);
-          if (room.size === 0) {
-            this.rooms.delete(documentId);
+      ws.on("message", async (data: Buffer) => {
+        const payload = new Uint8Array(data);
+        const { type, data: msgData } = decodeMessage(payload);
+
+        switch (type) {
+          case MessageType.SYNC_STEP_1: {
+            const diff = Y.encodeStateAsUpdate(room.doc, msgData);
+            ws.send(encodeSyncStep2(diff), { binary: true });
+            break;
           }
+          case MessageType.SYNC_STEP_2:
+          case MessageType.UPDATE: {
+            Y.applyUpdate(room.doc, msgData, ws);
+            this.broadcastToRoom(documentId, ws, encodeUpdate(msgData));
+            await redisWSAdapter.publishToRoom(
+              documentId,
+              "CRDT_UPDATE",
+              msgData,
+            );
+            break;
+          }
+          case MessageType.AWARENESS: {
+            awarenessProtocol.applyAwarenessUpdate(room.awareness, msgData, ws);
+            break;
+          }
+        }
+      });
+
+      ws.on("close", async () => {
+        room.clients.delete(ws);
+        if (room.clients.size === 0) {
+          room.awareness.destroy();
+          this.rooms.delete(documentId);
+          await redisWSAdapter.unsubscribeFromRoom(documentId);
+          snapshotWorker.processDocument(documentId).catch(console.error);
         }
       });
     });
   }
 
+  private async getOrCreateRoom(documentId: string): Promise<RoomState> {
+    let room = this.rooms.get(documentId);
+    if (room) return room;
+
+    const doc = new Y.Doc();
+    const awareness = new awarenessProtocol.Awareness(doc);
+
+    const content = await documentService.getDocumentContent(documentId);
+    if (content?.baseSnapshot) {
+      Y.applyUpdate(doc, Buffer.from(content.baseSnapshot, "base64"));
+    }
+    content?.crdtUpdates?.forEach((update) => {
+      Y.applyUpdate(doc, update);
+    });
+
+    doc.on("update", (update: Uint8Array, origin: any) => {
+      if (origin !== "redis-remote") {
+        documentService
+          .applyCRDTUpdate(documentId, "system", update)
+          .catch(console.error);
+      }
+    });
+
+    awareness.on("update", ({ added, updated, removed }: any, origin: any) => {
+      if (origin === "redis-remote") return;
+      const changed = added.concat(updated, removed);
+      const update = awarenessProtocol.encodeAwarenessUpdate(
+        awareness,
+        changed,
+      );
+      const frame = encodeAwareness(update);
+
+      this.broadcastToRoom(
+        documentId,
+        origin instanceof WebSocket ? origin : null,
+        frame,
+      );
+      redisWSAdapter.publishToRoom(documentId, "AWARENESS_UPDATE", update);
+    });
+
+    room = { doc, awareness, clients: new Set() };
+    this.rooms.set(documentId, room);
+    return room;
+  }
+
   private broadcastToRoom(
     documentId: string,
-    sender: ExtendedWebSocket,
+    sender: ExtendedWebSocket | null,
     payload: Uint8Array,
   ): void {
     const room = this.rooms.get(documentId);
     if (!room) return;
 
-    room.forEach((client) => {
+    room.clients.forEach((client) => {
       if (client !== sender && client.readyState === WebSocket.OPEN) {
         client.send(payload, { binary: true });
       }
