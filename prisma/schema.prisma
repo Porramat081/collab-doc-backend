@@ -1,201 +1,58 @@
 datasource db {
   provider = "postgresql"
+  url = env("DATABASE_URL")
 }
 
 generator client {
   provider = "prisma-client-js"
 }
 
-// ============================================================================
-// ENUM DEFINITIONS
-// ============================================================================
-
-enum RoleType {
-  OWNER
-  ADMIN
-  EDITOR
+enum DocumentRole {
   VIEWER
-
-  @@map("role_type")
-}
-
-enum DocVisibility {
-  PRIVATE
-  WORKSPACE
-  PUBLIC
-
-  @@map("doc_visibility")
-}
-
-enum AuditAction {
-  CREATE
-  UPDATE
-  DELETE
-  PERMISSION_CHANGE
-  RESTORE_VERSION
-
-  @@map("audit_action")
-}
-
-// ============================================================================
-// ORGANIZATIONS & USERS
-// ============================================================================
-
-model Organization {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String   @db.VarChar(255)
-  slug      String   @unique @db.VarChar(255)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
-  // Relations
-  members    OrganizationMember[]
-  workspaces Workspace[]
-  auditLogs  AuditLog[]
-
-  @@map("organizations")
+  EDITOR
+  ADMIN
 }
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  email        String   @unique @db.VarChar(255)
-  name         String   @db.VarChar(255)
-  avatarUrl    String?  @map("avatar_url")
-  passwordHash String?  @map("password_hash")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  avatarUrl String?  @map("avatar_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  // Relations
-  orgMemberships      OrganizationMember[]
-  createdFolders      Folder[]             @relation("CreatedFolders")
-  createdDocuments    Document[]           @relation("CreatedDocuments")
-  modifiedDocuments   Document[]           @relation("ModifiedDocuments")
-  grantedPermissions  DocumentPermission[] @relation("GrantedPermissions")
-  receivedPermissions DocumentPermission[] @relation("ReceivedPermissions")
-  actionsLogged       AuditLog[]           @relation("ActorAuditLogs")
+  ownedDocuments Document[]       @relation("DocumentOwner")
+  memberships    DocumentMember[]
 
   @@map("users")
 }
 
-model OrganizationMember {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  userId         String   @map("user_id") @db.Uuid
-  role           RoleType @default(EDITOR)
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  // Relations
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([organizationId, userId])
-  @@index([userId], name: "idx_org_members_user")
-  @@map("organization_members")
-}
-
-// ============================================================================
-// WORKSPACES & HIERARCHICAL FOLDERS
-// ============================================================================
-
-model Workspace {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  name           String   @db.VarChar(255)
-  description    String?
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  // Relations
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  folders      Folder[]
-  documents    Document[]
-
-  @@map("workspaces")
-}
-
-model Folder {
-  id          String   @id @default(uuid()) @db.Uuid
-  workspaceId String   @map("workspace_id") @db.Uuid
-  parentId    String?  @map("parent_id") @db.Uuid
-  name        String   @db.VarChar(255)
-  createdBy   String   @map("created_by") @db.Uuid
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  // Relations & Self-referential hierarchy
-  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parent    Folder?    @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
-  children  Folder[]   @relation("FolderHierarchy")
-  creator   User       @relation("CreatedFolders", fields: [createdBy], references: [id])
-  documents Document[]
-
-  @@index([workspaceId, parentId], name: "idx_folders_workspace_parent")
-  @@map("folders")
-}
-
-// ============================================================================
-// DOCUMENTS METADATA & PERMISSIONS
-// ============================================================================
-
 model Document {
-  id             String        @id @default(uuid()) @db.Uuid
-  workspaceId    String        @map("workspace_id") @db.Uuid
-  folderId       String?       @map("folder_id") @db.Uuid
-  title          String        @default("Untitled Document") @db.VarChar(255)
-  visibility     DocVisibility @default(PRIVATE)
-  createdBy      String        @map("created_by") @db.Uuid
-  lastModifiedBy String        @map("last_modified_by") @db.Uuid
-  isArchived     Boolean       @default(false) @map("is_archived")
-  currentVersion Int           @default(1) @map("current_version")
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  id        String   @id @default(uuid())
+  title     String   @default("Untitled Document")
+  ownerId   String   @map("owner_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  // Relations
-  workspace Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  folder    Folder?              @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  creator   User                 @relation("CreatedDocuments", fields: [createdBy], references: [id])
-  modifier  User                 @relation("ModifiedDocuments", fields: [lastModifiedBy], references: [id])
-  permissions DocumentPermission[]
-  auditLogs AuditLog[]
+  owner   User  @relation("DocumentOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members DocumentMember[]
 
-  @@index([workspaceId, folderId], name: "idx_documents_workspace_folder")
+  @@index([ownerId])
   @@map("documents")
 }
 
-model DocumentPermission {
-  id         String   @id @default(uuid()) @db.Uuid
-  documentId String   @map("document_id") @db.Uuid
-  userId     String   @map("user_id") @db.Uuid
-  permission RoleType @default(VIEWER)
-  grantedBy  String   @map("granted_by") @db.Uuid
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+model DocumentMember {
+  id         String       @id @default(uuid())
+  documentId String       @map("document_id")
+  userId     String       @map("user_id")
+  role       DocumentRole @default(VIEWER)
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
 
-  // Relations
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  user     User     @relation("ReceivedPermissions", fields: [userId], references: [id], onDelete: Cascade)
-  granter  User     @relation("GrantedPermissions", fields: [grantedBy], references: [id])
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([documentId, userId])
-  @@index([documentId, userId], name: "idx_doc_permissions_doc_user")
-  @@map("document_permissions")
-}
-
-// ============================================================================
-// AUDIT TRAIL
-// ============================================================================
-
-model AuditLog {
-  id             String      @id @default(uuid()) @db.Uuid
-  organizationId String      @map("organization_id") @db.Uuid
-  actorId        String      @map("actor_id") @db.Uuid
-  documentId     String?     @map("document_id") @db.Uuid
-  action         AuditAction
-  metadata       Json?       @db.JsonB
-  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
-
-  // Relations
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  actor        User         @relation("ActorAuditLogs", fields: [actorId], references: [id])
-  document     Document?    @relation(fields: [documentId], references: [id], onDelete: SetNull)
-
-  @@index([organizationId, documentId], name: "idx_audit_logs_org_doc")
-  @@map("audit_logs")
+  @@index([userId])
+  @@map("document_members")
 }
