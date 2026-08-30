@@ -1,31 +1,14 @@
-import type {
-  DocumentMetadataEntity,
-  DocumentContentEntity,
-} from "../../repositories";
-
-export interface CreateDocumentInput {
-  title: string;
-  ownerId: string;
-  initialContent?: string;
-}
-
-export interface DocumentWithContent {
-  metadata: DocumentMetadataEntity;
-  content: DocumentContentEntity | null;
+export interface DocumentContentResult {
+  documentId: string;
+  baseSnapshot?: string;
+  crdtUpdates: Uint8Array[];
 }
 
 export interface IDocumentService {
-  createDocument(input: CreateDocumentInput): Promise<DocumentWithContent>;
-  getDocument(documentId: string, userId: string): Promise<DocumentWithContent>;
-  saveSnapshot(
-    documentId: string,
-    userId: string,
-    content: string,
-    version: number,
-  ): Promise<void>;
+  getDocumentContent(documentId: string): Promise<DocumentContentResult>;
   applyCRDTUpdate(
     documentId: string,
     userId: string,
-    updateBlob: Uint8Array,
+    update: Uint8Array,
   ): Promise<void>;
 }
