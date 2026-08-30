@@ -11,6 +11,8 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(express.json());
 
+app.get("/", (req, res) => res.status(200).json({ message: "all right" }));
+
 app.use("/api/documents", documentRoutes);
 
 const PORT = parseInt(process.env.PORT || "", 10);

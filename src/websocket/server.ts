@@ -49,8 +49,11 @@ export class CollaborativeWebSocketServer {
         const token = this.extractTokenFromSubprotocol(request);
 
         if (!token || !documentId) {
-          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-          socket.destroy();
+          const response = Buffer.from(
+            "HTTP/1.1 401 Unauthorized\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+          );
+          socket.write(response);
+          socket.end();
           return;
         }
 
@@ -65,8 +68,11 @@ export class CollaborativeWebSocketServer {
             this.wss.emit("connection", client);
           });
         } catch {
-          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-          socket.destroy();
+          const response = Buffer.from(
+            "HTTP/1.1 401 Unauthorized\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+          );
+          socket.write(response);
+          socket.end();
         }
       } else {
         socket.destroy();
@@ -112,16 +118,9 @@ export class CollaborativeWebSocketServer {
       room.clients.add(ws);
       await redisWSAdapter.subscribeToRoom(documentId);
 
+      // Send initial sync state vector for client to request diff
       const serverStateVector = Y.encodeStateVector(room.doc);
       ws.send(encodeSyncStep1(serverStateVector), { binary: true });
-
-      const currentAwareness = awarenessProtocol.encodeAwarenessUpdate(
-        room.awareness,
-        Array.from(room.awareness.getStates().keys()),
-      );
-      if (currentAwareness.length > 0) {
-        ws.send(encodeAwareness(currentAwareness), { binary: true });
-      }
 
       ws.on("message", async (data: Buffer) => {
         const payload = new Uint8Array(data);
