@@ -3,12 +3,13 @@
     "target": "esnext",
     "module": "esnext",
     "rewriteRelativeImportExtensions": true,
-    "erasableSyntaxOnly": true,
-    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": false,
+    "verbatimModuleSyntax": false,
     "noEmit": true,
     "strict": true,
     "skipLibCheck": true,
     "moduleResolution": "bundler",
+    "types": ["node", "jest"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
