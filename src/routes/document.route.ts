@@ -1,21 +1,35 @@
-import { Router, raw } from "express";
-import { documentController } from "../controllers/document.controller";
+import { Router } from "express";
+import { authenticateJWT } from "../middleware/auth.middleware";
+import { DocumentController } from "../controllers/document.controller";
+import { requireDocumentRole } from "../middleware/rbac.middleware";
+import { DocumentRole } from "../types/permission";
 
 const router = Router();
 
-router.post("/", (req, res, next) => documentController.create(req, res, next));
-router.get("/:documentId", (req, res, next) =>
-  documentController.getDocument(req, res, next),
+router.use(authenticateJWT);
+
+router.post("/", DocumentController.createDocument);
+router.get(
+  "/:documentId",
+  requireDocumentRole(DocumentRole.VIEWER),
+  DocumentController.getDocument,
 );
-router.put("/:documentId/snapshot", (req, res, next) =>
-  documentController.updateSnapshot(req, res, next),
+router.patch(
+  "/:documentId",
+  requireDocumentRole(DocumentRole.EDITOR),
+  DocumentController.updateDocument,
 );
 
-// Stream binary CRDT updates using express raw parser
 router.post(
-  "/:documentId/crdt",
-  raw({ type: "application/octet-stream", limit: "10mb" }),
-  (req, res, next) => documentController.appendCRDTUpdate(req, res, next),
+  "/:documentId/members",
+  requireDocumentRole(DocumentRole.ADMIN),
+  DocumentController.updateMemberRole,
+);
+
+router.delete(
+  "/:documentId",
+  requireDocumentRole(DocumentRole.OWNER),
+  DocumentController.deleteDocument,
 );
 
 export default router;
