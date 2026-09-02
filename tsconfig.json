@@ -12,6 +12,7 @@
     "types": ["node", "jest"],
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
+    "noImplicitAny": false,
     "paths": {
       "@/*": ["./src/*"]
     }
