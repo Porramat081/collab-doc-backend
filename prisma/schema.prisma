@@ -14,12 +14,13 @@ enum DocumentRole {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  avatarUrl String?  @map("avatar_url")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  passwordHash String   @default("") @map("password_hash")
+  avatarUrl    String?  @map("avatar_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   ownedDocuments Document[]       @relation("DocumentOwner")
   memberships    DocumentMember[]
@@ -30,6 +31,7 @@ model User {
 model Document {
   id        String   @id @default(uuid())
   title     String   @default("Untitled Document")
+  content   Json?    @default("{}")
   ownerId   String   @map("owner_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

@@ -1,7 +1,9 @@
+import "dotenv/config";
 import http from "http";
 import express from "express";
 import cors from "cors";
 import documentRoutes from "@/routes/document.route";
+import authRoutes from "@/routes/auth.route";
 import mongoose from "mongoose";
 import { CollaborativeWebSocketServer } from "./websocket/server";
 
@@ -13,14 +15,17 @@ app.use(express.json());
 
 app.get("/", (req, res) => res.status(200).json({ message: "all right" }));
 
+app.use("/api/auth", authRoutes);
 app.use("/api/documents", documentRoutes);
 
-const PORT = parseInt(process.env.PORT || "", 10);
-const MONGO_URI = process.env.MONGO_URI || "";
+const PORT = Number(process.env.PORT || 3001);
+const MONGO_URI =
+  process.env.MONGO_URI ||
+  "mongodb://localhost:27017/collaborative_docs?authSource=admin&retryWrites=false";
 
 async function bootstrap() {
   try {
-    await mongoose.connect(MONGO_URI);
+    await mongoose.connect(MONGO_URI, { retryWrites: false });
     console.log("[MongoDB] Connected successfully");
 
     new CollaborativeWebSocketServer(server);

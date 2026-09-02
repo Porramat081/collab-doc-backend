@@ -16,7 +16,10 @@ export async function connectDB(): Promise<Mongoose> {
 
   console.log(`Connected to MongoDB database "${mongoose.connection.name}"`);
 
-  return await mongoose.connect(url, { dbName });
+  return await mongoose.connect(url, {
+    dbName,
+    retryWrites: false,
+  });
 }
 
 export async function disconnectDB(): Promise<void> {

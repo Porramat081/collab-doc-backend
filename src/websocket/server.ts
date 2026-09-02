@@ -3,6 +3,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { URL } from "url";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
+import { prisma } from "../db/connection";
 import { documentService } from "../services/document.service";
 import { decodeKey } from "../utils/jwt";
 import { redisWSAdapter } from "./redis-adapter";
@@ -38,7 +39,7 @@ export class CollaborativeWebSocketServer {
       handleProtocols: () => "access_token",
     });
 
-    server.on("upgrade", (request: IncomingMessage, socket, head) => {
+    server.on("upgrade", async (request: IncomingMessage, socket, head) => {
       const { pathname, searchParams } = new URL(
         request.url || "",
         `http://${request.headers.host}`,
@@ -59,12 +60,35 @@ export class CollaborativeWebSocketServer {
 
         try {
           const decoded = decodeKey(token);
+          const existingDocument = await prisma.document.findUnique({
+            where: { id: documentId },
+            select: { id: true },
+          });
+
+          if (existingDocument) {
+            const hasAccess = await prisma.document.findFirst({
+              where: {
+                id: documentId,
+                OR: [{ ownerId: decoded.userId }, { members: { some: { userId: decoded.userId } } }],
+              },
+              select: { id: true },
+            });
+
+            if (!hasAccess) {
+              const response = Buffer.from(
+                "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+              );
+              socket.write(response);
+              socket.end();
+              return;
+            }
+          }
+
           this.wss.handleUpgrade(request, socket, head, (ws) => {
             const client = ws as ExtendedWebSocket;
             client.documentId = documentId;
             client.userId = decoded.userId;
             client.isAlive = true;
-            // client.protocol = "access_token";
             this.wss.emit("connection", client);
           });
         } catch {
