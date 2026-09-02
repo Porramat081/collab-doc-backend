@@ -1,4 +1,4 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import http from "http";
 import express from "express";
 import cors from "cors";
@@ -10,6 +10,8 @@ import { CollaborativeWebSocketServer } from "@/websocket/server";
 const app = express();
 const server = http.createServer(app);
 
+dotenv.config();
+
 app.use(cors());
 app.use(express.json());
 
@@ -20,8 +22,10 @@ app.use("/api/documents", documentRoutes);
 
 const PORT = Number(process.env.PORT || 3001);
 const MONGO_URI = process.env.MONGO_URI;
+
 if (!MONGO_URI) {
   throw new Error("MONGO_URI is not set");
+  process.exit(1);
 }
 
 async function bootstrap() {
