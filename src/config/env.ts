@@ -60,12 +60,36 @@ export function isLoopbackUrl(url: string | undefined): boolean {
  */
 const allowLoopback = firstDefined("ALLOW_LOCALHOST_DB") === "true";
 
+/** Railway injects these into every service, whatever the builder. */
+const isRailway = Boolean(
+  firstDefined(
+    "RAILWAY_ENVIRONMENT",
+    "RAILWAY_ENVIRONMENT_NAME",
+    "RAILWAY_PROJECT_ID",
+    "RAILWAY_SERVICE_ID",
+    "RAILWAY_SERVICE_NAME",
+  ),
+);
+
+/**
+ * Enforce on Railway even when NODE_ENV is unset — relying on NODE_ENV alone would
+ * silently disable the check on any builder that does not bake it in.
+ */
+const enforceRoutableHosts = isProduction || isRailway;
+
+if (isRailway && !isProduction) {
+  console.warn(
+    `[env] Running on Railway with NODE_ENV="${NODE_ENV}". Set NODE_ENV=production ` +
+      `on the service so production behaviour (and the JWT_SECRET requirement) applies.`,
+  );
+}
+
 function assertRoutable(
   url: string | undefined,
   variable: string,
   railwayReference: string,
 ): void {
-  if (!isProduction || allowLoopback || !isLoopbackUrl(url)) return;
+  if (!enforceRoutableHosts || allowLoopback || !isLoopbackUrl(url)) return;
 
   throw new Error(
     `${variable} points at a loopback address (${url}).\n` +
@@ -74,6 +98,28 @@ function assertRoutable(
       `  On Railway set: ${variable} = ${railwayReference}\n` +
       `  (Set ALLOW_LOCALHOST_DB=true only if you really do reach the database over ` +
       `a loopback tunnel.)`,
+  );
+}
+
+/**
+ * A deployed service cannot work without these. An unresolved Railway reference
+ * arrives as an empty string, so "absent" and "misspelled service name" look the
+ * same here — the message covers both.
+ */
+function assertPresent(
+  url: string | undefined,
+  variable: string,
+  railwayReference: string,
+): void {
+  if (!enforceRoutableHosts || url) return;
+
+  throw new Error(
+    `${variable} is not set.\n` +
+      `  If you set it to ${railwayReference}, Railway could not resolve that ` +
+      `reference and passed an empty value.\n` +
+      `  Check that the database service exists in THIS project and environment, ` +
+      `and that the name inside \${{...}} matches the service name exactly.\n` +
+      `  The Variables tab's "Add Reference" picker fills this in correctly.`,
   );
 }
 
@@ -88,9 +134,18 @@ const mongoUri = firstDefined(
 const redisUrl = firstDefined("REDIS_URL", "REDIS_PRIVATE_URL", "REDIS_PUBLIC_URL");
 
 // Fail loudly at boot rather than as an opaque driver timeout mid-deploy.
+assertPresent(databaseUrl, "DATABASE_URL", "${{Postgres.DATABASE_URL}}");
+assertPresent(mongoUri, "MONGO_URI", "${{MongoDB.MONGO_URL}}");
 assertRoutable(databaseUrl, "DATABASE_URL", "${{Postgres.DATABASE_URL}}");
 assertRoutable(mongoUri, "MONGO_URI", "${{MongoDB.MONGO_URL}}");
 assertRoutable(redisUrl, "REDIS_URL", "${{Redis.REDIS_URL}}");
+
+// Redis stays optional: one replica works without it.
+if (enforceRoutableHosts && !redisUrl) {
+  console.warn(
+    "[env] REDIS_URL is not set. Running single-instance; cross-instance sync is off.",
+  );
+}
 
 const port = Number(firstDefined("PORT") ?? 3001);
 if (!Number.isInteger(port) || port <= 0 || port > 65535) {
