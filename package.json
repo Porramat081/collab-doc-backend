@@ -2,6 +2,7 @@
   "name": "collab-doc",
   "type": "module",
   "scripts": {
+    "build": "tsc --project tsconfig.build.json",
     "start": "tsx src/app.ts",
     "dev": "tsx --watch src/app.ts",
     "prisma:generate": "prisma generate",
