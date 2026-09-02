@@ -24,6 +24,7 @@ const PORT = Number(process.env.PORT || 3001);
 const MONGO_URI = process.env.MONGO_URI;
 
 if (!MONGO_URI) {
+  console.log("No env");
   throw new Error("MONGO_URI is not set");
   process.exit(1);
 }
