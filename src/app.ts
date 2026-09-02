@@ -2,7 +2,7 @@ import http from "http";
 import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
-import { env } from "./config/env.js";
+import { env, isOriginAllowed } from "./config/env.js";
 import documentRoutes from "./routes/document.route.js";
 import authRoutes from "./routes/auth.route.js";
 import { errorHandler } from "./middleware/error.middleware.js";
@@ -18,7 +18,8 @@ app.set("trust proxy", 1);
 
 app.use(
   cors({
-    origin: env.CORS_ORIGIN === "*" ? true : env.CORS_ORIGIN.split(",").map((o) => o.trim()),
+    origin: (origin, callback) =>
+      callback(null, isOriginAllowed(origin, env.CORS_ORIGINS)),
     credentials: true,
   }),
 );

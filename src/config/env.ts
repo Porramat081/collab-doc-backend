@@ -55,6 +55,46 @@ export function isLoopbackUrl(url: string | undefined): boolean {
 }
 
 /**
+ * Browsers send an Origin header with no path and no trailing slash
+ * ("https://app.vercel.app"), so a configured value copied from the address bar
+ * ("https://app.vercel.app/") would never match. Normalise both sides.
+ */
+function normalizeOrigin(value: string): string {
+  return value.trim().replace(/\/+$/, "").toLowerCase();
+}
+
+/**
+ * Exact origin match, or a wildcard subdomain such as "https://*.vercel.app"
+ * which is what makes Vercel preview deployments work.
+ * Exported for tests.
+ */
+export function isOriginAllowed(
+  origin: string | undefined,
+  allowed: readonly string[],
+): boolean {
+  // Non-browser callers (curl, health checks, server-to-server) send no Origin.
+  if (!origin) return true;
+  if (allowed.includes("*")) return true;
+
+  const candidate = normalizeOrigin(origin);
+
+  return allowed.some((raw) => {
+    // Normalise here too, so a caller passing a raw config value still matches.
+    const entry = normalizeOrigin(raw);
+    if (entry === candidate) return true;
+
+    const star = entry.indexOf("://*.");
+    if (star === -1) return false;
+
+    // "https://*.vercel.app" matches "https://anything.vercel.app" but not
+    // "https://vercel.app" and not a different scheme.
+    const scheme = entry.slice(0, star + 3);
+    const suffix = entry.slice(star + 4); // ".vercel.app"
+    return candidate.startsWith(scheme) && candidate.slice(scheme.length).endsWith(suffix);
+  });
+}
+
+/**
  * Escape hatch for the rare deploy that genuinely reaches a database over a
  * loopback sidecar or SSH tunnel.
  */
@@ -180,8 +220,12 @@ export const env = {
   JWT_SECRET: jwtSecret ?? "development-secret",
   JWT_EXPIRES_IN: firstDefined("JWT_EXPIRES_IN") ?? "7d",
 
-  /** Comma-separated list of allowed origins, or "*" to allow any. */
-  CORS_ORIGIN: firstDefined("CORS_ORIGIN") ?? "*",
+  /** Comma-separated list of allowed origins, or "*" to allow any.
+   *  Normalised so a trailing slash or stray casing does not break matching. */
+  CORS_ORIGINS: (firstDefined("CORS_ORIGIN") ?? "*")
+    .split(",")
+    .map(normalizeOrigin)
+    .filter((value) => value.length > 0),
 
   /** Seconds the entrypoint/bootstrap keeps retrying a database connection. */
   DB_CONNECT_TIMEOUT_MS: Number(firstDefined("DB_CONNECT_TIMEOUT_MS") ?? 30_000),
