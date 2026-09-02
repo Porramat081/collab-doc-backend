@@ -1,5 +1,5 @@
 import * as Y from "yjs";
-import { documentRepository } from "@/repositories/document.repository";
+import { documentRepository } from "@/repositories/index";
 
 export class SnapshotWorker {
   private processingQueue: Set<string> = new Set();

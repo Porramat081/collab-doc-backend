@@ -2,7 +2,7 @@ import type {
   IDocumentService,
   DocumentContentResult,
 } from "@/services/interfaces/document.service.interface";
-import { documentRepository } from "@/repositories/document.repository";
+import { documentRepository } from "@/repositories/index";
 
 export class DocumentService implements IDocumentService {
   async getDocumentContent(documentId: string): Promise<DocumentContentResult> {
