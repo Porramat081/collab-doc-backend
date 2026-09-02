@@ -1,6 +1,6 @@
 import type { Response, NextFunction } from "express";
-import type { AuthenticatedRequest } from "./rbac.middleware";
-import { decodeKey } from "@/utils/jwt";
+import type { AuthenticatedRequest } from "./rbac.middleware.js";
+import { decodeKey } from "../utils/jwt.js";
 
 export const authenticateJWT = (
   req: AuthenticatedRequest,

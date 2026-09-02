@@ -1,11 +1,11 @@
 import mongoose from "mongoose";
-import { connectDB, disconnectDB } from "./connection";
+import { connectDB, disconnectDB } from "./connection.js";
 import {
   ActivePresenceModel,
   CRDTUpdateModel,
   DocumentContentModel,
   DocumentVersionModel,
-} from "@/models/index";
+} from "../models/index.js";
 
 async function initializeMongo(): Promise<void> {
   await connectDB();

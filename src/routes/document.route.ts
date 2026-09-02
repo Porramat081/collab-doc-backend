@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { authenticateJWT } from "@/middleware/auth.middleware";
-import { DocumentController } from "@/controllers/document.controller";
-import { requireDocumentRole } from "@/middleware/rbac.middleware";
-import { DocumentRole } from "@/types/permission";
+import { authenticateJWT } from "../middleware/auth.middleware.js";
+import { DocumentController } from "../controllers/document.controller.js";
+import { requireDocumentRole } from "../middleware/rbac.middleware.js";
+import { DocumentRole } from "../types/permission.js";
 
 const router = Router();
 

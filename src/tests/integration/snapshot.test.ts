@@ -1,6 +1,6 @@
 import * as Y from "yjs";
-import { snapshotWorker } from "@/workers/snapshot.worker";
-import { documentRepository } from "@/repositories/index";
+import { snapshotWorker } from "../../workers/snapshot.worker.js";
+import { documentRepository } from "../../repositories/document.repository.js";
 
 // Mock repository methods
 jest.mock("../../repositories/document.repository");

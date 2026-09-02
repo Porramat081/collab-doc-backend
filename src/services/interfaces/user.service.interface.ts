@@ -1,4 +1,4 @@
-import type { UserEntity } from "@/repositories";
+import type { UserEntity } from "../../repositories/index.js";
 
 export interface IUserService {
   getUserProfile(userId: string): Promise<UserEntity>;

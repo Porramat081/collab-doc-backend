@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
-import { ValidationError } from "@/errors/app.error";
+import { ValidationError } from "../errors/app.error.js";
 import type { AnyZodObject } from "zod/v3";
 
 interface RequestValidationSchema {

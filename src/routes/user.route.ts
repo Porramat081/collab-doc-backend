@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { userController } from "@/controllers/user.controller";
-import { validateRequest } from "@/middleware/validate.middleware";
-import { RegisterUserSchema, UserParamSchema } from "@/schemas/user.schema";
+import { userController } from "../controllers/user.controller.js";
+import { validateRequest } from "../middleware/validate.middleware.js";
+import { RegisterUserSchema, UserParamSchema } from "../schemas/user.schema.js";
 import type { AnyZodObject } from "zod/v3";
 
 const router = Router();

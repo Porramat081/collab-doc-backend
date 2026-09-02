@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    /* Jest's runtime is CommonJS. Compiling the tests to CJS is what makes the
+       standard `jest` global and hoisted `jest.mock(...)` work; the production
+       build still emits ESM through tsconfig.build.json. */
+    "module": "CommonJS",
+    "moduleResolution": "node10",
+    "noEmit": true
+  }
+}

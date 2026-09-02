@@ -1,59 +1,76 @@
-# Multi-stage build for Node.js backend
-FROM node:20-alpine AS builder
+#
+# Production image for Railway (Builder = Dockerfile, not Railpack).
+#
+# Multi-stage so the final image ships only: node_modules (prod), dist/, prisma/.
+# Debian slim rather than Alpine because Prisma's query engine needs glibc+OpenSSL 3;
+# it matches the "debian-openssl-3.0.x" binaryTarget in prisma/schema.prisma.
 
+ARG NODE_VERSION=24
+
+# ---------------------------------------------------------------------------
+# base — shared runtime layer
+# ---------------------------------------------------------------------------
+FROM node:${NODE_VERSION}-bookworm-slim AS base
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy package files
-COPY package*.json ./
+# ---------------------------------------------------------------------------
+# build — full dependency tree, compile TypeScript to ESM in dist/
+# ---------------------------------------------------------------------------
+FROM base AS build
+ENV NODE_ENV=development
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+RUN npm ci --no-audit --no-fund
+COPY tsconfig.json tsconfig.build.json ./
+COPY src ./src
+RUN ./node_modules/.bin/prisma generate \
+    && ./node_modules/.bin/tsc -p tsconfig.build.json
 
-# Install dependencies
-RUN npm ci
+# ---------------------------------------------------------------------------
+# prod-deps — production dependencies only, with the Prisma client generated
+# ---------------------------------------------------------------------------
+FROM base AS prod-deps
+ENV NODE_ENV=production
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+RUN npm ci --omit=dev --no-audit --no-fund \
+    && ./node_modules/.bin/prisma generate \
+    && npm cache clean --force
 
-# Copy source code
-COPY . .
+# ---------------------------------------------------------------------------
+# runner — final image
+# ---------------------------------------------------------------------------
+FROM base AS runner
+ENV NODE_ENV=production \
+    PORT=3001 \
+    HOST=0.0.0.0
 
-# Build TypeScript
-RUN npm run build
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+COPY docker-entrypoint.sh ./
 
-# Production stage
-FROM node:20-alpine
+# Strip CRLF: the script is authored on Windows, and /bin/sh cannot execute a
+# shebang line that ends in \r ("no such file or directory" at container start).
+RUN sed -i 's/\r$//' docker-entrypoint.sh \
+    && chmod +x docker-entrypoint.sh \
+    && chown -R node:node /app
 
-WORKDIR /app
+USER node
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Documentation only — Railway injects its own PORT and routes to it.
+EXPOSE 3001
 
-# Copy package files
-COPY package*.json ./
+# Used by docker compose locally; Railway uses healthcheckPath in railway.json.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD node -e "const p=process.env.PORT||3001;require('http').get('http://127.0.0.1:'+p+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
 
-# Install production dependencies only
-RUN npm ci --only=production && npm cache clean --force
-
-# Copy built application from builder
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
-
-# Copy entrypoint script
-COPY entrypoint.sh ./
-RUN chmod +x ./entrypoint.sh
-
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
-
-# Set permissions
-RUN chown -R nodejs:nodejs /app
-
-USER nodejs
-
-# Expose ports
-EXPOSE 3000 3001
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
-
-# Use dumb-init to handle signals
-ENTRYPOINT ["dumb-init", "--"]
-
-# Start application with initialization
-CMD ["sh", "./entrypoint.sh"]
+# No init shim: docker-entrypoint.sh ends in `exec node dist/app.js`, so Node
+# becomes PID 1 itself and Railway's SIGTERM reaches the graceful shutdown
+# handler in src/app.ts directly. The app spawns no long-lived children, so
+# there is nothing for an init process to reap.
+CMD ["./docker-entrypoint.sh"]

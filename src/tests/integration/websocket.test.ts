@@ -1,15 +1,30 @@
 import http from "http";
 import WebSocket from "ws";
 import jwt from "jsonwebtoken";
-import { CollaborativeWebSocketServer } from "@/websocket/server";
+import { CollaborativeWebSocketServer } from "../../websocket/server.js";
 import {
   encodeSyncStep1,
   decodeMessage,
   MessageType,
-} from "@/websocket/protocol";
+} from "../../websocket/protocol.js";
+
+// The upgrade handler queries PostgreSQL for document access; stub it so the
+// handshake can be tested without a live database.
+jest.mock("../../db/connection", () => ({
+  prisma: {
+    document: {
+      // null => document not yet persisted, so the ACL check is skipped.
+      findUnique: jest.fn().mockResolvedValue(null),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+  },
+  connectDB: jest.fn(),
+  disconnectDB: jest.fn(),
+  disconnectPrisma: jest.fn(),
+}));
 
 // Mock document service to return empty initial document state
-jest.mock("@/services/document.service", () => ({
+jest.mock("../../services/document.service", () => ({
   documentService: {
     getDocumentContent: jest.fn().mockResolvedValue({
       documentId: "test-doc-1",
@@ -23,7 +38,8 @@ jest.mock("@/services/document.service", () => ({
 describe("WebSocket Connection & Handshake Tests", () => {
   let server: http.Server;
   let port: number;
-  const JWT_SECRET = process.env.JWT_SECRET || "super-secret-key";
+  // Set by src/tests/env.setup.ts, which also configures the server under test.
+  const JWT_SECRET = process.env.JWT_SECRET as string;
 
   beforeAll((done) => {
     server = http.createServer();

@@ -3,11 +3,11 @@ import { WebSocketServer, WebSocket } from "ws";
 import { URL } from "url";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
-import { prisma } from "@/db/connection";
-import { documentService } from "@/services/document.service";
-import { decodeKey } from "@/utils/jwt";
-import { redisWSAdapter } from "./redis-adapter";
-import { snapshotWorker } from "@/workers/snapshot.worker";
+import { prisma } from "../db/connection.js";
+import { documentService } from "../services/document.service.js";
+import { decodeKey } from "../utils/jwt.js";
+import { redisWSAdapter } from "./redis-adapter.js";
+import { snapshotWorker } from "../workers/snapshot.worker.js";
 import {
   MessageType,
   decodeMessage,
@@ -15,7 +15,7 @@ import {
   encodeSyncStep2,
   encodeUpdate,
   encodeAwareness,
-} from "@/websocket/protocol";
+} from "./protocol.js";
 
 interface ExtendedWebSocket extends WebSocket {
   documentId?: string;
@@ -32,6 +32,7 @@ interface RoomState {
 export class CollaborativeWebSocketServer {
   private wss: WebSocketServer;
   private rooms: Map<string, RoomState> = new Map();
+  private heartbeat: NodeJS.Timeout | null = null;
 
   constructor(server: HTTPServer) {
     this.wss = new WebSocketServer({
@@ -69,10 +70,7 @@ export class CollaborativeWebSocketServer {
             const hasAccess = await prisma.document.findFirst({
               where: {
                 id: documentId,
-                OR: [
-                  { ownerId: decoded.userId },
-                  { members: { some: { userId: decoded.userId } } },
-                ],
+                OR: [{ ownerId: decoded.userId }, { members: { some: { userId: decoded.userId } } }],
               },
               select: { id: true },
             });
@@ -107,6 +105,40 @@ export class CollaborativeWebSocketServer {
     });
 
     this.init();
+    this.startHeartbeat();
+  }
+
+  /**
+   * Railway's edge proxy drops connections that are idle for ~60s. A ping/pong
+   * every 30s keeps collaborative sessions alive and reaps half-open sockets.
+   */
+  private startHeartbeat(): void {
+    this.heartbeat = setInterval(() => {
+      this.wss.clients.forEach((socket) => {
+        const client = socket as ExtendedWebSocket;
+        if (client.isAlive === false) {
+          client.terminate();
+          return;
+        }
+        client.isAlive = false;
+        client.ping();
+      });
+    }, 30_000);
+    this.heartbeat.unref();
+  }
+
+  /** Closes every socket and stops the server; used by the graceful shutdown path. */
+  public async close(): Promise<void> {
+    if (this.heartbeat) {
+      clearInterval(this.heartbeat);
+      this.heartbeat = null;
+    }
+
+    this.wss.clients.forEach((client) => client.close(1001, "Server shutting down"));
+    this.rooms.forEach((room) => room.awareness.destroy());
+    this.rooms.clear();
+
+    await new Promise<void>((resolve) => this.wss.close(() => resolve()));
   }
 
   private extractTokenFromSubprotocol(request: IncomingMessage): string | null {
@@ -144,6 +176,12 @@ export class CollaborativeWebSocketServer {
       const room = await this.getOrCreateRoom(documentId);
       room.clients.add(ws);
       await redisWSAdapter.subscribeToRoom(documentId);
+
+      ws.isAlive = true;
+      ws.on("pong", () => {
+        ws.isAlive = true;
+      });
+      ws.on("error", (err) => console.error("[WebSocket] Socket error:", err));
 
       // Send initial sync state vector for client to request diff
       const serverStateVector = Y.encodeStateVector(room.doc);

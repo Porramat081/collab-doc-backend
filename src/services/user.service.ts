@@ -1,6 +1,6 @@
-import type { IUserRepository, UserEntity } from "@/repositories/index";
-import type { IUserService } from "@/services/interfaces/user.service.interface";
-import { NotFoundError, ValidationError } from "@/errors/app.error";
+import type { IUserRepository, UserEntity } from "../repositories/index.js";
+import type { IUserService } from "./interfaces/user.service.interface.js";
+import { NotFoundError, ValidationError } from "../errors/app.error.js";
 
 export class UserService implements IUserService {
   private userRepo;

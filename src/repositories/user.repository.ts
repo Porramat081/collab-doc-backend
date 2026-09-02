@@ -1,20 +1,16 @@
 import type {
   IUserRepository,
   UserEntity,
-} from "@/repositories/interfaces/user.repository.interface";
-import { prisma } from "@/db/connection";
+} from "./interfaces/user.repository.interface.js";
+import { prisma } from "../db/connection.js";
 
 export class UserRepository implements IUserRepository {
   async findById(id: string): Promise<UserEntity | null> {
-    return prisma.user.findUnique({
-      where: { id },
-    }) as Promise<UserEntity | null>;
+    return prisma.user.findUnique({ where: { id } }) as Promise<UserEntity | null>;
   }
 
   async findByEmail(email: string): Promise<UserEntity | null> {
-    return prisma.user.findUnique({
-      where: { email },
-    }) as Promise<UserEntity | null>;
+    return prisma.user.findUnique({ where: { email } }) as Promise<UserEntity | null>;
   }
 
   async create(data: {

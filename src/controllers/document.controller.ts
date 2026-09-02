@@ -1,6 +1,6 @@
 import type { Response } from "express";
-import type { AuthenticatedRequest } from "@/middleware/rbac.middleware";
-import { prisma } from "@/db/connection";
+import type { AuthenticatedRequest } from "../middleware/rbac.middleware.js";
+import { prisma } from "../db/connection.js";
 
 export class DocumentController {
   static async listDocuments(req: AuthenticatedRequest, res: Response) {
@@ -26,14 +26,11 @@ export class DocumentController {
         orderBy: { updatedAt: "desc" },
       });
 
-      const enriched = documents.map((document: (typeof documents)[number]) => {
-        const member = document.members.find(
-          (entry: (typeof document.members)[number]) => entry.userId === userId,
-        );
+      const enriched = documents.map((document) => {
+        const member = document.members.find((entry) => entry.userId === userId);
         return {
           ...document,
-          userRole:
-            document.ownerId === userId ? "OWNER" : member?.role || "VIEWER",
+          userRole: document.ownerId === userId ? "OWNER" : member?.role || "VIEWER",
         };
       });
 
@@ -85,16 +82,10 @@ export class DocumentController {
         return;
       }
 
-      const member = document.members.find(
-        (entry: (typeof document.members)[number]) =>
-          entry.userId === req.user?.id,
-      );
+      const member = document.members.find((entry) => entry.userId === req.user?.id);
       res.status(200).json({
         ...document,
-        userRole:
-          document.ownerId === req.user?.id
-            ? "OWNER"
-            : member?.role || req.documentPermission?.role || "VIEWER",
+        userRole: document.ownerId === req.user?.id ? "OWNER" : member?.role || req.documentPermission?.role || "VIEWER",
       });
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch document" });
@@ -135,20 +126,11 @@ export class DocumentController {
       const { documentId } = req.params;
       const rows = await prisma.documentMember.findMany({
         where: { documentId: documentId as string },
-        include: {
-          user: {
-            select: { id: true, name: true, email: true, avatarUrl: true },
-          },
-        },
+        include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
         orderBy: { createdAt: "asc" },
       });
 
-      res.status(200).json(
-        rows.map((row: (typeof rows)[number]) => ({
-          ...row.user,
-          role: row.role,
-        })),
-      );
+      res.status(200).json(rows.map((row) => ({ ...row.user, role: row.role })));
     } catch (err) {
       res.status(500).json({ error: "Failed to load members" });
     }
@@ -162,9 +144,7 @@ export class DocumentController {
       const targetUser = userId
         ? await prisma.user.findUnique({ where: { id: userId } })
         : email
-          ? await prisma.user.findUnique({
-              where: { email: String(email).toLowerCase() },
-            })
+          ? await prisma.user.findUnique({ where: { email: String(email).toLowerCase() } })
           : null;
 
       if (!targetUser) {
