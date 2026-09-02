@@ -8,6 +8,11 @@ MIGRATION_RETRIES="${MIGRATION_RETRIES:-10}"
 
 log() { echo "[entrypoint] $*"; }
 
+# Validate configuration first. Migrations run before the server starts, so without
+# this a bad DATABASE_URL surfaces as Prisma's P1001 rather than naming the variable.
+log "Validating configuration..."
+node dist/config/preflight.js
+
 if [ "$RUN_MIGRATIONS" = "true" ]; then
   if [ -z "${DATABASE_URL:-}" ]; then
     log "DATABASE_URL is not set - skipping PostgreSQL migrations."

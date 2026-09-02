@@ -26,7 +26,71 @@ if (isProduction && !jwtSecret) {
   );
 }
 
+/**
+ * True when a connection string points at the machine it runs on.
+ *
+ * Inside a container "localhost" is the container itself, so a loopback host in a
+ * deployed environment is always a copy-paste of local settings. Exported for tests.
+ */
+export function isLoopbackUrl(url: string | undefined): boolean {
+  if (!url) return false;
+
+  let host: string;
+  try {
+    // Multi-host URIs (mongodb://a:27017,b:27017/db) do not parse; fall back to a
+    // textual check rather than rejecting a URL we simply cannot introspect.
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return /(^|@|\/\/)(localhost|127\.\d+\.\d+\.\d+|\[?::1\]?|0\.0\.0\.0)(:|\/|,|$)/i.test(url);
+  }
+
+  const bare = host.replace(/^\[|\]$/g, "");
+  return (
+    bare === "localhost" ||
+    bare === "::1" ||
+    bare === "0.0.0.0" ||
+    bare === "host.docker.internal" ||
+    /^127\.\d+\.\d+\.\d+$/.test(bare)
+  );
+}
+
+/**
+ * Escape hatch for the rare deploy that genuinely reaches a database over a
+ * loopback sidecar or SSH tunnel.
+ */
+const allowLoopback = firstDefined("ALLOW_LOCALHOST_DB") === "true";
+
+function assertRoutable(
+  url: string | undefined,
+  variable: string,
+  railwayReference: string,
+): void {
+  if (!isProduction || allowLoopback || !isLoopbackUrl(url)) return;
+
+  throw new Error(
+    `${variable} points at a loopback address (${url}).\n` +
+      `  Inside a container "localhost" is the container itself, not your machine ` +
+      `and not the database service.\n` +
+      `  On Railway set: ${variable} = ${railwayReference}\n` +
+      `  (Set ALLOW_LOCALHOST_DB=true only if you really do reach the database over ` +
+      `a loopback tunnel.)`,
+  );
+}
+
+const databaseUrl = firstDefined("DATABASE_URL", "POSTGRES_URL", "DATABASE_PRIVATE_URL");
+const mongoUri = firstDefined(
+  "MONGO_URI",
+  "MONGO_URL",
+  "MONGODB_URI",
+  "MONGODB_URL",
+  "MONGO_PRIVATE_URL",
+);
 const redisUrl = firstDefined("REDIS_URL", "REDIS_PRIVATE_URL", "REDIS_PUBLIC_URL");
+
+// Fail loudly at boot rather than as an opaque driver timeout mid-deploy.
+assertRoutable(databaseUrl, "DATABASE_URL", "${{Postgres.DATABASE_URL}}");
+assertRoutable(mongoUri, "MONGO_URI", "${{MongoDB.MONGO_URL}}");
+assertRoutable(redisUrl, "REDIS_URL", "${{Redis.REDIS_URL}}");
 
 const port = Number(firstDefined("PORT") ?? 3001);
 if (!Number.isInteger(port) || port <= 0 || port > 65535) {
@@ -43,18 +107,12 @@ export const env = {
   HOST: firstDefined("HOST") ?? "0.0.0.0",
 
   /** PostgreSQL (Prisma). */
-  DATABASE_URL: firstDefined("DATABASE_URL", "POSTGRES_URL", "DATABASE_PRIVATE_URL"),
+  DATABASE_URL: databaseUrl,
 
   /** MongoDB (Mongoose) — document content, CRDT updates, presence.
    *  Validated in connectDB() rather than here, so that /health and the unit tests
    *  still work on a partially configured environment. */
-  MONGO_URI: firstDefined(
-    "MONGO_URI",
-    "MONGO_URL",
-    "MONGODB_URI",
-    "MONGODB_URL",
-    "MONGO_PRIVATE_URL",
-  ),
+  MONGO_URI: mongoUri,
   MONGO_DB_NAME: firstDefined("MONGO_DB_NAME", "MONGO_DB") ?? "collaborative_docs",
 
   /** Redis — cross-instance fan-out for CRDT/awareness frames. Optional: a single

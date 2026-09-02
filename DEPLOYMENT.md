@@ -38,6 +38,12 @@ NODE_ENV       = production
 CORS_ORIGIN    = https://your-frontend.example.com
 ```
 
+> **Never paste `.env` or `.env.example` into Railway's Raw Editor.** Those files
+> hold `localhost` URLs that are only meaningful on your own machine. Inside a
+> container `localhost` is the container itself, so Prisma fails with
+> `P1001: Can't reach database server at localhost:5432`. The app now refuses to
+> boot in production with a loopback database URL and names the variable to fix.
+
 Notes:
 
 - **Do not set `PORT`.** Railway injects it and routes to that port; the app reads it
@@ -56,6 +62,9 @@ Then click **Generate Domain** on the app service to get a public URL.
 
 `docker-entrypoint.sh` runs before the server starts:
 
+0. `node dist/config/preflight.js` — validates the environment and prints a
+   credential-redacted summary. A bad variable aborts the deploy here, by name,
+   before any driver gets a chance to report it as a generic timeout.
 1. `prisma migrate deploy` — applies `prisma/migrations/` to Postgres, retrying up to
    10 times with a 5s backoff (a cold project starts the app before Postgres is ready).
 2. `node dist/db/initialize-mongo.js` — creates MongoDB collections and indexes.
@@ -63,7 +72,7 @@ Then click **Generate Domain** on the app service to get a public URL.
 3. `exec node dist/app.js` — the server replaces the shell, so Railway's `SIGTERM`
    reaches Node and the graceful shutdown path runs.
 
-Set `RUN_MIGRATIONS=false` to skip steps 1 and 2.
+Set `RUN_MIGRATIONS=false` to skip steps 1 and 2; the preflight always runs.
 
 ## 5. Health checks
 
@@ -131,5 +140,7 @@ npm run dev
 | Health check fails, logs show the server listening | `PORT` was set manually. Remove it. |
 | `exec ./docker-entrypoint.sh: no such file or directory` | CRLF line endings. `.gitattributes` forces LF and the Dockerfile strips `\r`; re-clone if the file was committed with CRLF. |
 | `Environment variable not found: DATABASE_URL` | The Postgres reference variable is missing on the **app** service. |
-| Redis `ETIMEDOUT` on a `*.railway.internal` host | Railway's private network is IPv6-only. Handled: `src/config/env.ts` switches ioredis to `family: 0` for internal hostnames. |
+| `P1001: Can't reach database server at localhost:5432` | `DATABASE_URL` holds a local value. Set it to `${{Postgres.DATABASE_URL}}`. |
+| `DATABASE_URL points at a loopback address` at boot | The guard above caught the same mistake before the driver timed out. Same fix; applies to `MONGO_URI` and `REDIS_URL` too. Override with `ALLOW_LOCALHOST_DB=true` only for a real loopback tunnel. |
+| Redis `ETIMEDOUT` on a `*.railway.internal` host | Railway's private network is IPv6-only and ioredis defaults to IPv4. Handled: `src/config/env.ts` sets `family: 0` (override with `REDIS_FAMILY`). |
 | `Transaction numbers are only allowed on a replica set` | Railway's MongoDB is standalone. Handled: the snapshot write falls back to non-transactional writes. |
