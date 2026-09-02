@@ -13,15 +13,16 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(express.json());
 
-app.get("/", (req, res) => res.status(200).json({ message: "all right" }));
+app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/documents", documentRoutes);
 
 const PORT = Number(process.env.PORT || 3001);
-const MONGO_URI =
-  process.env.MONGO_URI ||
-  "mongodb://localhost:27017/collaborative_docs?authSource=admin&retryWrites=false";
+const MONGO_URI = process.env.MONGO_URI;
+if (!MONGO_URI) {
+  throw new Error("MONGO_URI is not set");
+}
 
 async function bootstrap() {
   try {

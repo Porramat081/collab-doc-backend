@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 
 export async function connectDB(): Promise<Mongoose> {
   const url = process.env.MONGO_URI;
-  const dbName = process.env.MONGO_DB_NAME;
+  const dbName = process.env.MONGO_DB;
 
   if (!url) {
     throw new Error("MONGO_URL environment variable is not set");

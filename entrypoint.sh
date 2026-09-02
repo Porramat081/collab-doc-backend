@@ -3,20 +3,16 @@ set -e
 
 echo "Starting application initialization..."
 
-# Wait for databases to be ready with retries
 echo "Waiting for PostgreSQL..."
-MAX_RETRIES=30
-RETRY_COUNT=0
-
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-  if node -e "require('http').get('http://localhost:3000/health', () => {}).on('error', () => {})" 2>/dev/null; then
-    echo "✓ Ready to proceed"
-    break
-  fi
-  RETRY_COUNT=$((RETRY_COUNT + 1))
-  echo "  Attempt $RETRY_COUNT/$MAX_RETRIES... waiting..."
+until node -e "
+  const {Client}=require('pg');
+  const c=new Client({connectionString:process.env.DATABASE_URL});
+  c.connect().then(()=>c.end()).catch(()=>process.exit(1));
+" 2>/dev/null; do
+  echo "  waiting for postgres..."
   sleep 2
 done
+echo "✓ PostgreSQL ready"
 
 # Run Prisma migrations
 echo "Running database migrations..."

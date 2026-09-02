@@ -17,9 +17,16 @@ export class RedisWSAdapter {
   constructor() {
     const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 
-    // Separate Redis clients required for Pub and Sub modes
-    this.pubClient = new Redis(redisUrl, { maxRetriesPerRequest: null });
-    this.subClient = new Redis(redisUrl, { maxRetriesPerRequest: null });
+    const opts = { maxRetriesPerRequest: null, lazyConnect: true };
+    this.pubClient = new Redis(redisUrl, opts);
+    this.subClient = new Redis(redisUrl, opts);
+
+    this.pubClient.on("error", (err) =>
+      console.error("[Redis pub] connection error:", err.message),
+    );
+    this.subClient.on("error", (err) =>
+      console.error("[Redis sub] connection error:", err.message),
+    );
 
     this.initSubscriber();
   }
