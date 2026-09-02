@@ -3,11 +3,11 @@ import { WebSocketServer, WebSocket } from "ws";
 import { URL } from "url";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
-import { prisma } from "../db/connection";
-import { documentService } from "../services/document.service";
-import { decodeKey } from "../utils/jwt";
+import { prisma } from "@/db/connection";
+import { documentService } from "@/services/document.service";
+import { decodeKey } from "@/utils/jwt";
 import { redisWSAdapter } from "./redis-adapter";
-import { snapshotWorker } from "../workers/snapshot.worker";
+import { snapshotWorker } from "@/workers/snapshot.worker";
 import {
   MessageType,
   decodeMessage,
@@ -15,7 +15,7 @@ import {
   encodeSyncStep2,
   encodeUpdate,
   encodeAwareness,
-} from "./protocol";
+} from "@/websocket/protocol";
 
 interface ExtendedWebSocket extends WebSocket {
   documentId?: string;
@@ -69,7 +69,10 @@ export class CollaborativeWebSocketServer {
             const hasAccess = await prisma.document.findFirst({
               where: {
                 id: documentId,
-                OR: [{ ownerId: decoded.userId }, { members: { some: { userId: decoded.userId } } }],
+                OR: [
+                  { ownerId: decoded.userId },
+                  { members: { some: { userId: decoded.userId } } },
+                ],
               },
               select: { id: true },
             });

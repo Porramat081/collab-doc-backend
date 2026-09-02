@@ -1,8 +1,8 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { z } from "zod";
-import { prisma } from "../db/connection";
-import { createKey } from "../utils/jwt";
+import { prisma } from "@/db/connection";
+import { createKey } from "@/utils/jwt";
 
 const router = Router();
 
@@ -48,7 +48,9 @@ router.post("/register", async (req, res) => {
     });
 
     if (existing) {
-      res.status(409).json({ error: "An account with this email already exists." });
+      res
+        .status(409)
+        .json({ error: "An account with this email already exists." });
       return;
     }
 
@@ -71,7 +73,9 @@ router.post("/register", async (req, res) => {
       user: await respondWithUser(user.id),
     });
   } catch (error) {
-    res.status(400).json({ error: "Registration failed. Please verify the form values." });
+    res
+      .status(400)
+      .json({ error: "Registration failed. Please verify the form values." });
   }
 });
 
@@ -98,7 +102,9 @@ router.post("/login", async (req, res) => {
       user: await respondWithUser(user.id),
     });
   } catch (error) {
-    res.status(400).json({ error: "Login failed. Please check your email and password." });
+    res
+      .status(400)
+      .json({ error: "Login failed. Please check your email and password." });
   }
 });
 

@@ -1,6 +1,6 @@
 import type { Response } from "express";
-import type { AuthenticatedRequest } from "../middleware/rbac.middleware";
-import { prisma } from "../db/connection";
+import type { AuthenticatedRequest } from "@/middleware/rbac.middleware";
+import { prisma } from "@/db/connection";
 
 export class DocumentController {
   static async listDocuments(req: AuthenticatedRequest, res: Response) {
@@ -143,14 +143,12 @@ export class DocumentController {
         orderBy: { createdAt: "asc" },
       });
 
-      res
-        .status(200)
-        .json(
-          rows.map((row: (typeof rows)[number]) => ({
-            ...row.user,
-            role: row.role,
-          })),
-        );
+      res.status(200).json(
+        rows.map((row: (typeof rows)[number]) => ({
+          ...row.user,
+          role: row.role,
+        })),
+      );
     } catch (err) {
       res.status(500).json({ error: "Failed to load members" });
     }

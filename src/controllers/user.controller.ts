@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { userService } from "../services";
+import { userService } from "@/services";
 
 export class UserController {
   async register(

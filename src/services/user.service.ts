@@ -1,6 +1,6 @@
-import type { IUserRepository, UserEntity } from "../repositories/index.ts";
-import type { IUserService } from "./interfaces/user.service.interface.ts";
-import { NotFoundError, ValidationError } from "../errors/app.error.ts";
+import type { IUserRepository, UserEntity } from "@/repositories/index";
+import type { IUserService } from "@/services/interfaces/user.service.interface";
+import { NotFoundError, ValidationError } from "@/errors/app.error";
 
 export class UserService implements IUserService {
   private userRepo;

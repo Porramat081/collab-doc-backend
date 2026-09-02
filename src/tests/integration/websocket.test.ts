@@ -1,15 +1,15 @@
 import http from "http";
 import WebSocket from "ws";
 import jwt from "jsonwebtoken";
-import { CollaborativeWebSocketServer } from "../../websocket/server";
+import { CollaborativeWebSocketServer } from "@/websocket/server";
 import {
   encodeSyncStep1,
   decodeMessage,
   MessageType,
-} from "../../websocket/protocol";
+} from "@/websocket/protocol";
 
 // Mock document service to return empty initial document state
-jest.mock("../../services/document.service", () => ({
+jest.mock("@/services/document.service", () => ({
   documentService: {
     getDocumentContent: jest.fn().mockResolvedValue({
       documentId: "test-doc-1",

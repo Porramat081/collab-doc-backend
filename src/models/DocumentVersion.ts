@@ -1,6 +1,6 @@
 import { Schema, model, Document, Model } from "mongoose";
-import { BlockSchema } from "./DocumentContent.ts";
-import type { IBlock } from "./DocumentContent.ts";
+import { BlockSchema } from "@/models/DocumentContent";
+import type { IBlock } from "@/models/DocumentContent";
 
 export interface IChangeSummary {
   additions: number;

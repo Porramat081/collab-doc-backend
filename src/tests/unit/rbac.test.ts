@@ -1,4 +1,4 @@
-import { DocumentRole, hasPermission } from "../../types/permission";
+import { DocumentRole, hasPermission } from "@/types/permission";
 
 describe("RBAC Permissions Unit Tests", () => {
   test("OWNER should have access to all levels", () => {

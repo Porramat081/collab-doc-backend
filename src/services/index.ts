@@ -1,9 +1,9 @@
-import { userRepository, documentRepository } from "../repositories/index.ts";
-import { UserService } from "./user.service.ts";
-import { DocumentService } from "./document.service.ts";
+import { userRepository, documentRepository } from "@/repositories/index";
+import { UserService } from "@/services/user.service";
+import { DocumentService } from "@/services/document.service";
 
 export const userService = new UserService(userRepository);
 export const documentService = new DocumentService();
 
-export * from "./interfaces/user.service.interface.ts";
-export * from "./interfaces/document.service.interface.ts";
+export * from "@/services/interfaces/user.service.interface";
+export * from "@/services/interfaces/document.service.interface";

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
-import { DocumentRole, hasPermission } from "../types/permission";
-import { prisma } from "../db/connection";
+import { DocumentRole, hasPermission } from "@/types/permission";
+import { prisma } from "@/db/connection";
 
 export interface AuthenticatedRequest extends Request {
   user?: { id: string; email: string };

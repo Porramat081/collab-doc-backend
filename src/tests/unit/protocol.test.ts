@@ -5,7 +5,7 @@ import {
   encodeSyncStep2,
   encodeUpdate,
   encodeAwareness,
-} from "../../websocket/protocol";
+} from "@/websocket/protocol";
 
 describe("WebSocket Binary Protocol Unit Tests", () => {
   const dummyData = new Uint8Array([10, 20, 30, 40]);

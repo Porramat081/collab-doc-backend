@@ -5,7 +5,7 @@ import cors from "cors";
 import documentRoutes from "@/routes/document.route";
 import authRoutes from "@/routes/auth.route";
 import mongoose from "mongoose";
-import { CollaborativeWebSocketServer } from "./websocket/server";
+import { CollaborativeWebSocketServer } from "@/websocket/server";
 
 const app = express();
 const server = http.createServer(app);

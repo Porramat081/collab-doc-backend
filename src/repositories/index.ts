@@ -1,8 +1,8 @@
-import { UserRepository } from "./user.repository.ts";
-import { DocumentRepository } from "./document.repository.ts";
+import { UserRepository } from "@/repositories/user.repository";
+import { DocumentRepository } from "@/repositories/document.repository";
 
 export const userRepository = new UserRepository();
 export const documentRepository = new DocumentRepository();
 
-export * from "./interfaces/user.repository.interface.ts";
-export * from "./interfaces/document.repository.interface.ts";
+export * from "@/repositories/interfaces/user.repository.interface";
+export * from "@/repositories/interfaces/document.repository.interface";
